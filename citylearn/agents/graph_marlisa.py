@@ -4,6 +4,10 @@ import numpy as np
 from citylearn.agents.rbc import RBC
 from citylearn.agents.sac import SACRBC
 from citylearn.citylearn import CityLearnEnv
+from citylearn.agents.net import GATConv
+import numpy as np
+import numpy.typing as npt
+
 
 try:
     from sklearn.decomposition import PCA
@@ -20,7 +24,7 @@ from citylearn.agents.sac import SAC
 from citylearn.preprocessing import Encoder, NoNormalization, PeriodicNormalization, RemoveFeature
 from citylearn.rl import RegressionBuffer
 
-class MARLISA(SAC):
+class graphMARLISA(SAC):
     __COORDINATION_VARIABLE_COUNT = 2
 
     def __init__(
@@ -37,6 +41,7 @@ class MARLISA(SAC):
         self.pca_compression = pca_compression
         self.iterations = iterations
         self.regression_frequency = regression_frequency
+        self.gat=GATConv()
 
         # internally defined
         self.regression_buffer = [RegressionBuffer(int(self.regression_buffer_capacity)) for _ in self.action_space]
@@ -114,6 +119,31 @@ class MARLISA(SAC):
     @iterations.setter
     def iterations(self, iterations: int):
         self.__iterations = 2 if iterations is None else iterations
+
+    def get_encoded_observations(self, index: int, observations: List[float]) -> npt.NDArray[np.float64]:
+        # Convert observations to a tensor and prepare for GAT input
+        x, edge_index = self.observations_to_graph(observations)
+        x = torch.tensor(x, dtype=torch.float32, device=self.device)
+        edge_index = torch.tensor(edge_popindex, dtype=torch.long, device=self.device)
+
+        # Process observations through GAT
+        gat_output = self.gat_conv(x, edge_index)
+
+        # Optionally, apply post-GAT encoders if needed
+        encoded_features = [encoder(gat_feat) for gat_feat, encoder in zip(gat_output, self.encoders[index]) if encoder is not None]
+
+        # Flatten the result and remove None values
+        flat_encoded = np.array([feat for feat in np.hstack(encoded_features) if feat is not None], dtype=float)
+        
+        return flat_encoded
+
+    def observations_toize_graph(self, observations):
+        # Example transformation of observations to graph format
+        # You need to define how to transform your specific observation structure into graph nodes and edges
+        x = [obs for obs in observations]  # Node features
+        edge_index = [[i, j] for i in range(len(observations)) for j in range(len(observations)) if i != j]  # Fully connected for example
+        return x, edge_index
+    
 
     def update(self, observations: List[List[float]], actions: List[List[float]], reward: List[float], next_observations: List[List[float]], terminated: bool, truncated: bool):
         r"""Update replay buffer.
@@ -300,8 +330,9 @@ class MARLISA(SAC):
         actions = [None for _ in range(agent_count)]
         action_order = list(range(agent_count))
         next_agent_ixs = [sorted(action_order)[action_order[(i + 1)%agent_count]] for i in range(agent_count)]
-        coordination_variables = [[0.0, 0.0] for _ in range(agent_count)] 
-        expected_demand = [0.0 for _ in range(agent_count)]
+        coordination_variables = [[0.0, 0.0] for _ in range(agent_count)]
+        expected_demand = [0.0 for _ in range(agent_t)]
+        real_demand = [0.0 for _ in range(agent_t)]  # Add real demand tracking
         total_demand = 0.0
         
         for i in range(self.iterations):
@@ -318,6 +349,7 @@ class MARLISA(SAC):
                 a = list(a.detach().cpu().numpy()[0])
                 actions[c] = a
                 expected_demand[c] = self.predict_demand(c, o_, a)
+                real_demand[c] = self.get_real_demand(c)  # Assuming there is a method to get real demand
 
                 if i == self.iterations - 1 and c == action_order[-1]:
                     pass
@@ -327,8 +359,14 @@ class MARLISA(SAC):
 
                 coordination_variables[c][1] = capacity_dispatched
                 capacity_dispatched += self.energy_size_coefficient[c]
+
+                # Feedback adjustment
+                if real_demand[c] != expected_demand[c]:
+                    error = real_demand[c] - expected_demand[c]
+                    coordination_variables[c][0] += error * 0.1  # Adjust based on error, 0.1 is a learning rate-like term
         
         return actions, coordination_variables
+
 
     def get_post_exploration_prediction_without_information_sharing(self, observations: List[List[float]], deterministic: bool) -> Tuple[List[List[float]], List[List[float]]]:
         agent_count = len(self.action_dimension)
@@ -469,7 +507,7 @@ class MARLISA(SAC):
             [[0.0]*self.__COORDINATION_VARIABLE_COUNT for _ in self.action_dimension] for _ in range(2)
         ]
 
-class MARLISARBC(MARLISA, SACRBC):
+class MARLISARBC(graphMARLISA, SACRBC):
     r"""Uses :py:class:`citylearn.agents.rbc.RBC` to select action during exploration before using :py:class:`citylearn.agents.marlisa.MARLISA`.
 
     Parameters

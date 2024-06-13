@@ -3,11 +3,12 @@ from citylearn.agents.base import BaselineAgent
 from citylearn.agents.rbc import BasicRBC
 from citylearn.agents.sac import SAC
 from citylearn.agents.marlisa import MARLISA
+from citylearn.agents.graph_marlisa import graphMARLISA
+
 import pandas as pd
 from citylearn.reward_function import RewardFunction
 import numpy as np
 # Define CustomReward
-from citylearn import RewardFunction
 import numpy as np
 
 class CustomReward(RewardFunction):
@@ -76,6 +77,9 @@ def train_agent(agent_name, episodes=1, use_custom_reward=False):
         agent = SAC(env)
     elif agent_name == 'MARLISA':
         agent = MARLISA(env)
+
+    elif agent_name == 'graphMARLISA':
+        agent = graphMARLISA(env)
     else:
         raise ValueError(f"Unsupported agent: {agent_name}")
     
@@ -92,7 +96,7 @@ def train_agent(agent_name, episodes=1, use_custom_reward=False):
     print(kpis_pivot)
 
 # Example of how to use the function
-agent_list=['Baseline','RBC','SAC','MARLISA']
+agent_list=['Baseline','RBC','SAC','MARLISA','graphMARLISA']
 for agent in agent_list:
     print('agent name',agent)
     train_agent('Baseline', episodes=1)
