@@ -41,7 +41,7 @@ class graphMARLISA(SAC):
         self.pca_compression = pca_compression
         self.iterations = iterations
         self.regression_frequency = regression_frequency
-        self.gat=GATConv()
+        self.gat=GATConv(10,20)
 
         # internally defined
         self.regression_buffer = [RegressionBuffer(int(self.regression_buffer_capacity)) for _ in self.action_space]
@@ -120,8 +120,10 @@ class graphMARLISA(SAC):
     def iterations(self, iterations: int):
         self.__iterations = 2 if iterations is None else iterations
 
-    def get_encoded_observations(self, index: int, observations: List[float]) -> npt.NDArray[np.float64]:
+    def get_encoded_observations_(self, index: int, observations: List[float]) -> npt.NDArray[np.float64]:
         # Convert observations to a tensor and prepare for GAT input
+        flat_encoded=[]
+
         x, edge_index = self.observations_to_graph(observations)
         x = torch.tensor(x, dtype=torch.float32, device=self.device)
         edge_index = torch.tensor(edge_popindex, dtype=torch.long, device=self.device)
@@ -134,6 +136,8 @@ class graphMARLISA(SAC):
 
         # Flatten the result and remove None values
         flat_encoded = np.array([feat for feat in np.hstack(encoded_features) if feat is not None], dtype=float)
+    
+
         
         return flat_encoded
 
@@ -449,7 +453,7 @@ class graphMARLISA(SAC):
                     + b['annual_heating_demand_estimate']/3.5 \
                         + b['annual_non_shiftable_load_estimate'] \
                             - b['annual_solar_generation_estimate']/6.0
-            coef = max(0.3*(coef + b['annual_solar_generation_estimate']/6.0), coef)/8760
+            coef = max(0.9*(coef + b['annual_solar_generation_estimate']/6.0), coef)/8760
             self.energy_size_coefficient.append(coef)
             self.total_coefficient += coef
 

@@ -99,4 +99,4 @@ def train_agent(agent_name, episodes=1, use_custom_reward=False):
 agent_list=['Baseline','RBC','SAC','MARLISA','graphMARLISA']
 for agent in agent_list:
     print('agent name',agent)
-    train_agent('Baseline', episodes=1)
+    train_agent(agent, episodes=1)
